@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: matchcv
+  threads:
+    virtual:
+      enabled: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  ai:
+    google:
+      genai:
+        # Clave gratuita de Google AI Studio (https://aistudio.google.com/apikey)
+        api-key: ${GEMINI_API_KEY}
+        chat:
+          options:
+            model: ${GEMINI_CHAT_MODEL:gemini-3.5-flash-lite}
+            temperature: 0.1
+            thinking-level: LOW
+        embedding:
+          api-key: ${GEMINI_API_KEY}
+          text:
+            options:
+              model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
+
+matchcv:
+  # Ofertas que pasan del filtro de embeddings a la puntuación con IA (cuida la cuota gratis)
+  top-n: 15
+  # Cuantas palabras clave del CV se buscan (una búsqueda por palabra y fuente)
+  max-queries: 3
+  sources:
+    # Fuente de prueba con ofertas inventadas: ponla a false cuando uses fuentes reales
+    fake:
+      enabled: ${MATCHCV_FAKE_SOURCE:true}
+  infojobs:
+    # Se activa solo si hay claves (https://developer.infojobs.net)
+    client-id: ${INFOJOBS_CLIENT_ID:}
+    client-secret: ${INFOJOBS_CLIENT_SECRET:}
