@@ -238,7 +238,8 @@ class _MatchCard extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Text('Fuente: ${o.source}', style: Theme.of(context).textTheme.bodySmall),
+              Text(o.source == 'adzuna' ? 'Jobs by Adzuna' : 'Fuente: ${o.source}',
+                  style: Theme.of(context).textTheme.bodySmall),
               const Spacer(),
               if (o.url != null)
                 TextButton.icon(

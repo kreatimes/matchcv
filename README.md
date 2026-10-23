@@ -2,7 +2,7 @@
 
 Sube tu CV en PDF y encuentra las ofertas de empleo que mejor encajan contigo. La IA lee el CV, busca en varias fuentes a la vez, se queda con las ofertas más parecidas y te dice **cuánto encajas, qué cumples y qué te falta** en cada una.
 
-**Stack:** Flutter · Java 21 · Spring Boot 3.5 · Spring AI · Gemini (capa gratuita) · API de InfoJobs
+**Stack:** Flutter · Java 21 · Spring Boot 3.5 · Spring AI · Gemini (capa gratuita) · API de Adzuna
 
 ## Cómo funciona
 
@@ -10,9 +10,10 @@ Sube tu CV en PDF y encuentra las ofertas de empleo que mejor encajan contigo. L
 flowchart LR
     A[CV en PDF] --> B[Gemini: perfil JSON<br/>puesto, skills, provincia,<br/>palabras clave]
     B --> C[JobSearchService<br/>todas las fuentes en paralelo]
-    C --> D1[InfoJobs]
-    C --> D2[Fuente de prueba]
-    C --> D3[... Jooble, Adzuna, ATS]
+    C --> D1[Adzuna]
+    C --> D2[InfoJobs]
+    C --> D3[Fuente de prueba]
+    C --> D4[... Jooble, ATS]
     C --> E[Quitar duplicados]
     E --> F[Embeddings: top 15<br/>más parecidas al CV]
     F --> G[Gemini: nota 0-100,<br/>cumples / te falta]
@@ -39,7 +40,7 @@ public class JoobleSource implements JobSource {
 
 ## Por qué no hay scraping de LinkedIn o Indeed
 
-No tienen API pública para buscar ofertas, y hacer scraping va contra sus condiciones de uso. MatchCV usa solo **APIs oficiales**. Para ampliar cobertura de forma legal, las siguientes fuentes previstas son agregadores (Jooble, Adzuna) y los endpoints públicos de los ATS que usan las empresas (Greenhouse, Lever, Personio…).
+No tienen API pública para buscar ofertas, y hacer scraping va contra sus condiciones de uso. MatchCV usa solo **APIs oficiales**: Adzuna, un agregador que junta ofertas de muchos portales, e InfoJobs (adaptador listo; su registro de apps nuevas está cerrado temporalmente). Para ampliar cobertura de forma legal, las siguientes fuentes previstas son Jooble y los endpoints públicos de los ATS que usan las empresas (Greenhouse, Lever, Personio…).
 
 ## Arrancar el backend
 
@@ -51,7 +52,7 @@ export GEMINI_API_KEY=tu_clave            # Windows PowerShell: $env:GEMINI_API_
 ./mvnw spring-boot:run
 ```
 
-Sin claves de InfoJobs funciona con la **fuente de prueba** (ofertas inventadas en `fake-offers.json`). Para usar InfoJobs, registra una app en [developer.infojobs.net](https://developer.infojobs.net) y define `INFOJOBS_CLIENT_ID`, `INFOJOBS_CLIENT_SECRET` y `MATCHCV_FAKE_SOURCE=false`. Ver `backend/.env.example`.
+Sin más claves funciona con la **fuente de prueba** (ofertas inventadas en `fake-offers.json`). Para ofertas reales, crea una cuenta gratuita en [developer.adzuna.com](https://developer.adzuna.com) y define `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` y `MATCHCV_FAKE_SOURCE=false`. Cada fuente se activa sola si tiene claves. Ver `backend/.env.example`.
 
 Swagger: http://localhost:8080/swagger-ui.html
 
@@ -76,8 +77,10 @@ flutter run --dart-define=API_URL=http://IP_DE_TU_PC:8080   # móvil físico
 
 ## Hoja de ruta
 
-- [x] Versión 1: CV → perfil, matching con embeddings + LLM, InfoJobs, app Flutter
-- [ ] Jooble y Adzuna
+- [x] Versión 1: CV → perfil, matching con embeddings + LLM, app Flutter
+- [x] Adzuna (ofertas reales de España)
+- [ ] InfoJobs (adaptador listo, pendiente de claves)
+- [ ] Jooble
 - [ ] Ofertas de ATS (Greenhouse, Lever, Personio, Teamtailor)
 - [ ] Compartir una oferta desde LinkedIn/Indeed a la app para puntuarla
 - [ ] Docker

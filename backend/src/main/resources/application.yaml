@@ -21,6 +21,8 @@ spring:
             model: ${GEMINI_CHAT_MODEL:gemini-3.5-flash-lite}
             temperature: 0.1
             thinking-level: LOW
+            # Modo JSON: Gemini solo puede devolver JSON válido (todas nuestras llamadas piden JSON)
+            response-mime-type: application/json
         embedding:
           api-key: ${GEMINI_API_KEY}
           text:
@@ -40,3 +42,7 @@ matchcv:
     # Se activa solo si hay claves (https://developer.infojobs.net)
     client-id: ${INFOJOBS_CLIENT_ID:}
     client-secret: ${INFOJOBS_CLIENT_SECRET:}
+  adzuna:
+    # Se activa solo si hay claves (https://developer.adzuna.com)
+    app-id: ${ADZUNA_APP_ID:}
+    app-key: ${ADZUNA_APP_KEY:}
