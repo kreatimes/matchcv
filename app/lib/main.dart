@@ -1,8 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'browser_page.dart';
+import 'store.dart';
+import 'widgets.dart';
 
 void main() => runApp(const MatchCvApp());
 
@@ -29,64 +31,184 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final _province = TextEditingController();
-  bool _loading = false;
-  MatchResult? _result;
+  bool _loading = true;
+  bool _uploading = false;
+  Profile? _profile;
+  List<SavedSearch> _searches = [];
 
   @override
-  void dispose() {
-    _province.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _reload();
   }
 
-  Future<void> _pickAndMatch() async {
+  Future<void> _reload() async {
+    final profile = await Store.loadProfile();
+    final searches = await Store.loadSearches();
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
+      _searches = searches;
+      _loading = false;
+    });
+  }
+
+  Future<void> _uploadCv() async {
     final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
     final file = picked.isEmpty ? null : picked.first;
     if (file == null || file.path == null) return;
 
-    setState(() => _loading = true);
+    setState(() => _uploading = true);
     try {
-      final result = await Api.match(file.path!, file.name, province: _province.text.trim());
-      setState(() => _result = result);
+      final profile = await Api.profile(file.path!, file.name);
+      await Store.saveProfile(profile);
+      setState(() => _profile = profile);
     } catch (e) {
-      debugPrint('Error en match: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(Api.errorMessage(e))));
-      }
+      debugPrint('Error subiendo CV: $e');
+      if (mounted) showMessage(context, Api.errorMessage(e));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _uploading = false);
     }
+  }
+
+  Future<void> _open({required String name, required String role, required String url}) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BrowserPage(profile: _profile!, name: name, role: role, portal: 'InfoJobs', url: url),
+      ),
+    );
+    _reload(); // por si ha guardado búsquedas
+  }
+
+  Future<void> _customSearch() async {
+    final keyword = await askText(context, title: 'Nueva búsqueda', hint: 'Ej.: ayudante de cocina');
+    if (keyword == null) return;
+    _open(name: keyword, role: keyword, url: infojobsSearchUrl(keyword, _profile!.province));
+  }
+
+  Future<void> _delete(SavedSearch search) async {
+    final list = _searches.where((s) => s != search).toList();
+    await Store.saveSearches(list);
+    setState(() => _searches = list);
   }
 
   @override
   Widget build(BuildContext context) {
-    final result = _result;
+    final profile = _profile;
     return Scaffold(
       appBar: AppBar(
         title: const Text('MatchCV'),
         actions: [
-          if (result != null && !_loading)
-            IconButton(
-              tooltip: 'Probar con otro CV',
-              icon: const Icon(Icons.refresh),
-              onPressed: () => setState(() => _result = null),
-            ),
+          if (profile != null && !_uploading)
+            IconButton(tooltip: 'Cambiar CV', icon: const Icon(Icons.upload_file), onPressed: _uploadCv),
         ],
       ),
       body: _loading
-          ? const _Loading()
-          : result == null
-              ? _Start(province: _province, onPick: _pickAndMatch)
-              : _Results(result: result),
+          ? const Center(child: CircularProgressIndicator())
+          : _uploading
+              ? const _Loading()
+              : profile == null
+                  ? _Start(onPick: _uploadCv)
+                  : _home(profile),
+    );
+  }
+
+  Widget _home(Profile p) {
+    final text = Theme.of(context).textTheme;
+    final savedNames = _searches.map((s) => s.name.toLowerCase()).toSet();
+    final suggestions = p.suggestions.where((s) => !savedNames.contains(s.name.toLowerCase())).toList();
+    final details = [?p.seniority, if (p.years != null) '${p.years} años exp.', ?p.province].join(' · ');
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Tu perfil', style: text.labelLarge),
+                const SizedBox(height: 4),
+                Text(p.role, style: text.titleLarge),
+                if (details.isNotEmpty) Text(details, style: text.bodyMedium),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: p.skills
+                      .take(10)
+                      .map((s) => Chip(label: Text(s), visualDensity: VisualDensity.compact))
+                      .toList(),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_searches.isNotEmpty) ...[
+          _Header('Tus búsquedas'),
+          ..._searches.map((s) => Card(
+                child: ListTile(
+                  leading: const Icon(Icons.bookmark),
+                  title: Text(s.name),
+                  subtitle: Text(s.portal),
+                  trailing: IconButton(
+                    tooltip: 'Borrar',
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _delete(s),
+                  ),
+                  onTap: () => _open(name: s.name, role: s.role, url: s.url),
+                ),
+              )),
+        ],
+        _Header('Sugeridas por tu CV'),
+        ...suggestions.map((s) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.auto_awesome),
+                title: Text(s.name),
+                subtitle: Text('Buscar "${s.keyword}" en InfoJobs'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _open(name: s.name, role: s.role, url: infojobsSearchUrl(s.keyword, p.province)),
+              ),
+            )),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.search),
+            title: const Text('Otra búsqueda'),
+            subtitle: const Text('Escribe lo que quieras buscar'),
+            onTap: _customSearch,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Abre una búsqueda, ajusta los filtros en InfoJobs y pulsa el marcador para guardarla. '
+          'Con "Analizar página" la IA puntúa las ofertas que estás viendo.',
+          style: text.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  final String text;
+
+  const _Header(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text(text, style: Theme.of(context).textTheme.titleSmall),
     );
   }
 }
 
 class _Start extends StatelessWidget {
-  final TextEditingController province;
   final VoidCallback onPick;
 
-  const _Start({required this.province, required this.onPick});
+  const _Start({required this.onPick});
 
   @override
   Widget build(BuildContext context) {
@@ -105,26 +227,16 @@ class _Start extends StatelessWidget {
               Text('Encuentra ofertas que encajan contigo', style: text.headlineSmall, textAlign: TextAlign.center),
               const SizedBox(height: 8),
               Text(
-                'Sube tu CV en PDF. La IA lo lee, busca ofertas y te dice cuánto encajas en cada una y qué te falta.',
+                'Sube tu CV en PDF. La IA te propone búsquedas y, mientras navegas por InfoJobs, '
+                'te dice cuánto encajas en cada oferta y qué te falta.',
                 style: text.bodyMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              TextField(
-                controller: province,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Provincia (opcional)',
-                  helperText: 'Si lo dejas vacío, se usa la de tu CV',
-                  prefixIcon: Icon(Icons.place_outlined),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: onPick,
                 icon: const Icon(Icons.upload_file),
-                label: const Padding(padding: EdgeInsets.all(12), child: Text('Subir CV y buscar')),
+                label: const Padding(padding: EdgeInsets.all(12), child: Text('Subir mi CV')),
               ),
             ],
           ),
@@ -145,152 +257,7 @@ class _Loading extends StatelessWidget {
         children: [
           CircularProgressIndicator(),
           SizedBox(height: 16),
-          Text('Leyendo tu CV y buscando ofertas…'),
-          SizedBox(height: 4),
-          Text('Puede tardar unos segundos', style: TextStyle(fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
-class _Results extends StatelessWidget {
-  final MatchResult result;
-
-  const _Results({required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = result.profile;
-    final text = Theme.of(context).textTheme;
-    final details = [
-      ?p.seniority,
-      if (p.years != null) '${p.years} años exp.',
-      ?p.province,
-    ].join(' · ');
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Tu perfil', style: text.labelLarge),
-                const SizedBox(height: 4),
-                Text(p.role, style: text.titleLarge),
-                if (details.isNotEmpty) Text(details, style: text.bodyMedium),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: p.skills.take(10).map((s) => Chip(label: Text(s), visualDensity: VisualDensity.compact)).toList(),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(
-            result.matches.isEmpty
-                ? 'No hemos encontrado ofertas para: ${p.keywords.join(', ')}'
-                : '${result.offersFound} ofertas encontradas · las ${result.matches.length} que mejor encajan',
-            style: text.titleSmall,
-          ),
-        ),
-        ...result.matches.map((m) => _MatchCard(match: m)),
-      ],
-    );
-  }
-}
-
-class _MatchCard extends StatelessWidget {
-  final Match match;
-
-  const _MatchCard({required this.match});
-
-  @override
-  Widget build(BuildContext context) {
-    final o = match.offer;
-    final subtitle = [
-      ?o.company,
-      ?o.city,
-      if (o.remote) 'Remoto',
-      ?o.salary,
-    ].join(' · ');
-
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: _ScoreBadge(score: match.score),
-        title: Text(o.title),
-        subtitle: Text(subtitle),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        expandedCrossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (match.reason.isNotEmpty) Text(match.reason),
-          const SizedBox(height: 8),
-          ...match.matches.map((s) => _Line(icon: Icons.check_circle, color: Colors.green, text: s)),
-          ...match.missing.map((s) => _Line(icon: Icons.cancel, color: Colors.redAccent, text: s)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Text(o.source == 'adzuna' ? 'Jobs by Adzuna' : 'Fuente: ${o.source}',
-                  style: Theme.of(context).textTheme.bodySmall),
-              const Spacer(),
-              if (o.url != null)
-                TextButton.icon(
-                  onPressed: () => launchUrl(Uri.parse(o.url!), mode: LaunchMode.externalApplication),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: const Text('Ver oferta'),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScoreBadge extends StatelessWidget {
-  final int score;
-
-  const _ScoreBadge({required this.score});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = score >= 80
-        ? Colors.green
-        : score >= 50
-            ? Colors.orange
-            : Colors.grey;
-    return CircleAvatar(
-      backgroundColor: color.withValues(alpha: 0.15),
-      child: Text('$score', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-    );
-  }
-}
-
-class _Line extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String text;
-
-  const _Line({required this.icon, required this.color, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text)),
+          Text('Leyendo tu CV…'),
         ],
       ),
     );

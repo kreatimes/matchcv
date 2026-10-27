@@ -23,8 +23,13 @@ public class CvService {
             String city,
             String province,             // provincia española, p. ej. "Madrid"; null si no aparece
             List<String> searchKeywords, // 2-4 búsquedas cortas para un portal de empleo
-            String summary               // 2-3 frases sobre el candidato, para comparar con las ofertas
+            String summary,              // 2-3 frases sobre el candidato, para comparar con las ofertas
+            List<SuggestedSearch> suggestedSearches // caminos profesionales distintos que encajan con el CV
     ) {
+    }
+
+    // Una búsqueda que la app propone al usuario, p. ej. ("Prácticas DAM", "Prácticas de desarrollo", "prácticas DAM")
+    public record SuggestedSearch(String name, String role, String keyword) {
     }
 
     public record CvAnalysis(String text, CvProfile profile) {
@@ -39,6 +44,11 @@ public class CvService {
               alguien en InfoJobs. De la más a la menos importante. Ejemplo: "Flutter", "Desarrollador Java".
               Si el CV indica que busca prácticas (FCT, becas), la primera búsqueda debe ser
               "Prácticas" seguida de su especialidad, por ejemplo "Prácticas DAM".
+            - suggestedSearches: entre 2 y 4 caminos profesionales DISTINTOS a los que podría optar
+              según el CV (por ejemplo, si tiene experiencia en informática y en cocina, uno de cada).
+              Para cada uno: name (nombre corto para mostrar), role (puesto buscado, una frase corta)
+              y keyword (lo que escribiría en el buscador de InfoJobs, 1-3 palabras).
+              Si busca prácticas, la primera debe ser la de prácticas.
             - Responde en español.
 
             CV:

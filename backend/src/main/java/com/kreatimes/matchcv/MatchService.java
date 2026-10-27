@@ -139,7 +139,8 @@ public class MatchService {
                 .toList();
     }
 
-    private static String describe(CvProfile p) {
+    // También la usa PageService
+    static String describe(CvProfile p) {
         return """
                 Puesto: %s (%s, %s años de experiencia)
                 Habilidades: %s

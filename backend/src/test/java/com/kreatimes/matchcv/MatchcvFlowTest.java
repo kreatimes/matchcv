@@ -44,6 +44,8 @@ class MatchcvFlowTest {
     MatchService matchService;
     @Autowired
     JobSearchService jobSearchService;
+    @Autowired
+    PageService pageService;
 
     @Test
     void cvToRankedOffers() throws Exception {
@@ -71,6 +73,32 @@ class MatchcvFlowTest {
         long acme = offers.stream().filter(o -> Text.normalize(o.company()).equals("acme tech")).count();
         assertEquals(1, acme, "misma oferta en dos búsquedas y escrita distinto = una sola");
         assertEquals(offers.size(), offers.stream().map(JobOffer::id).distinct().count());
+    }
+
+    @Test
+    void analyzePage() {
+        var profile = new CvService.CvProfile("Desarrollador móvil", "junior", 0, List.of("Flutter"),
+                List.of(), "San Fernando de Henares", "Madrid", List.of("Flutter"), "Estudiante DAM", List.of());
+        var links = List.of(
+                new PageService.PageLink("Desarrollador/a Flutter", "https://www.infojobs.net/madrid/dev-flutter/of-i1"),
+                new PageService.PageLink("Ver", "https://www.infojobs.net/x"),
+                new PageService.PageLink("Desarrollador/a Flutter", "https://www.infojobs.net/madrid/dev-flutter/of-i1"));
+        assertEquals(1, PageService.usefulLinks(links).size(), "sin duplicados ni enlaces cortos");
+
+        var matches = pageService.analyze(new PageService.AnalyzeRequest(
+                profile, "Desarrollador móvil junior", "InfoJobs", "PÁGINA DE PRUEBA", links));
+
+        assertEquals(2, matches.size(), "la oferta sin título se descarta");
+        assertEquals("Desarrollador/a Flutter", matches.get(0).offer().title(), "ordenadas por nota");
+        assertEquals(100, matches.get(0).score(), "nota limitada a 100");
+        assertEquals("https://www.infojobs.net/madrid/dev-flutter/of-i1", matches.get(0).offer().url());
+        assertEquals("Híbrido · Indefinido", matches.get(0).offer().description());
+        assertNull(matches.get(1).offer().url(), "un enlace que no estaba en la página no se acepta");
+        assertTrue(matches.get(1).offer().remote());
+        assertEquals("infojobs", matches.get(1).offer().source());
+
+        assertThrows(IllegalArgumentException.class, () -> pageService.analyze(
+                new PageService.AnalyzeRequest(profile, null, "infojobs", " ", List.of())));
     }
 
     @Test
@@ -136,7 +164,15 @@ class MatchcvFlowTest {
             return new ChatModel() {
                 @Override
                 public ChatResponse call(Prompt prompt) {
-                    String json = prompt.getContents().contains("Extrae el perfil")
+                    String json = prompt.getContents().contains("PÁGINA DE PRUEBA")
+                            ? """
+                            [{"title":"Camarero","company":"Bar Pepe","city":"Madrid","modality":"Teletrabajo",
+                              "url":"https://inventada.com/1","score":20,"matches":[],"missing":["Hostelería"],"reason":"Otro sector"},
+                             {"title":"Desarrollador/a Flutter","company":"Acme","city":"Madrid","modality":"Híbrido",
+                              "contract":"Indefinido","salaryMin":22000,"url":"https://www.infojobs.net/madrid/dev-flutter/of-i1",
+                              "score":130,"matches":["Flutter"],"missing":[],"reason":"Encaja"},
+                             {"title":"","company":"X","score":50}]"""
+                            : prompt.getContents().contains("Extrae el perfil")
                             ? """
                             {"role":"Desarrollador móvil","seniority":"junior","yearsExperience":0,
                              "skills":["Flutter","Dart","Java"],"languages":["Inglés B2"],

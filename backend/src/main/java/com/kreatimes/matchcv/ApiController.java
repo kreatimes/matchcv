@@ -16,11 +16,21 @@ public class ApiController {
     private final CvService cvService;
     private final MatchService matchService;
     private final JobSearchService jobSearchService;
+    private final PageService pageService;
 
-    public ApiController(CvService cvService, MatchService matchService, JobSearchService jobSearchService) {
+    public ApiController(CvService cvService, MatchService matchService, JobSearchService jobSearchService,
+                         PageService pageService) {
         this.cvService = cvService;
         this.matchService = matchService;
         this.jobSearchService = jobSearchService;
+        this.pageService = pageService;
+    }
+
+    // La app manda el texto de la página de resultados que el usuario está viendo y su perfil:
+    // devuelve las ofertas de esa página puntuadas, de mejor a peor
+    @PostMapping("/page/analyze")
+    public List<MatchService.Match> analyzePage(@RequestBody PageService.AnalyzeRequest request) {
+        return pageService.analyze(request);
     }
 
     // Solo el perfil extraído del CV (útil para comprobar qué ha entendido la IA)
