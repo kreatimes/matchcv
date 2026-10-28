@@ -7,18 +7,16 @@ import 'api.dart';
 import 'store.dart';
 import 'widgets.dart';
 
-// URL de búsqueda de InfoJobs a partir de una palabra clave.
-// Solo ponemos lo básico; el resto de filtros los elige el usuario en la propia web de InfoJobs.
-String infojobsSearchUrl(String keyword, String? province) {
-  final params = {'keyword': keyword, 'sortBy': 'PUBLICATION_DATE', 'page': '1'};
-  // ponytail: solo conocemos el id de Madrid (33); otras provincias se eligen en los filtros de InfoJobs
-  if ((province ?? '').toLowerCase().contains('madrid')) {
-    params['provinceIds'] = '33';
-  } else {
-    params['countryIds'] = '17'; // toda España
-  }
-  return Uri.https('www.infojobs.net', '/jobsearch/search-results/list.xhtml', params).toString();
-}
+const portals = ['InfoJobs', 'LinkedIn'];
+
+// URL de búsqueda de cada portal: solo la palabra clave y toda España.
+// La provincia y el resto de filtros los elige el usuario en la web del portal y los guarda con el marcador.
+String searchUrl(String portal, String keyword) => switch (portal) {
+// Búsqueda clásica de LinkedIn: la nueva (/jobs/search-results/) no existe en la web móvil
+  'LinkedIn' => Uri.https('www.linkedin.com', '/jobs/search/', {'keywords': keyword, 'location': 'España'}).toString(),
+  _ => Uri.https('www.infojobs.net', '/jobsearch/search-results/list.xhtml',
+      {'keyword': keyword, 'countryIds': '17', 'sortBy': 'PUBLICATION_DATE', 'page': '1'}).toString(),
+};
 
 // Texto visible de la página + sus enlaces (para que la IA asocie cada oferta con su URL)
 const _extractJs = r'''
@@ -59,6 +57,8 @@ class _BrowserPageState extends State<BrowserPage> {
     super.initState();
     _web = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+    // Ignora los mensajes de consola de las webs (LinkedIn escribe miles)
+      ..setOnConsoleMessage((_) {})
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (_) {
           if (mounted) setState(() => _pageLoading = true);
@@ -71,7 +71,11 @@ class _BrowserPageState extends State<BrowserPage> {
   }
 
   Future<void> _save() async {
-    final url = await _web.currentUrl() ?? widget.url;
+    // Quitamos la oferta seleccionada (LinkedIn) para que la búsqueda guardada abra la lista
+    final current = Uri.parse(await _web.currentUrl() ?? widget.url);
+    final url = current.replace(
+      queryParameters: Map.of(current.queryParameters)..remove('currentJobId'),
+    ).toString();
     if (!mounted) return;
     final name = await askText(context, title: 'Guardar búsqueda', initial: widget.name, hint: 'Nombre');
     if (name == null) return;
@@ -121,18 +125,18 @@ class _BrowserPageState extends State<BrowserPage> {
               matches.isEmpty
                   ? 'No hay ofertas en esta página'
                   : '${matches.length} ofertas en esta página · '
-                      '${matches.where((m) => m.score >= 70).length} encajan bien contigo',
+                  '${matches.where((m) => m.score >= 70).length} encajan bien contigo',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
             ...matches.map((m) => MatchCard(
-                  match: m,
-                  // Abrimos la oferta en el mismo navegador
-                  onOpen: (url) {
-                    Navigator.pop(context);
-                    _web.loadRequest(Uri.parse(url));
-                  },
-                )),
+              match: m,
+              // Abrimos la oferta en el mismo navegador
+              onOpen: (url) {
+                Navigator.pop(context);
+                _web.loadRequest(Uri.parse(url));
+              },
+            )),
           ],
         ),
       ),

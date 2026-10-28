@@ -71,20 +71,44 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _open({required String name, required String role, required String url}) async {
+  Future<void> _open({required String name, required String role, required String portal, required String url}) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => BrowserPage(profile: _profile!, name: name, role: role, portal: 'InfoJobs', url: url),
+        builder: (_) => BrowserPage(profile: _profile!, name: name, role: role, portal: portal, url: url),
       ),
     );
     _reload(); // por si ha guardado búsquedas
   }
 
+  // Pregunta en qué portal buscar y abre la búsqueda
+  Future<void> _openIn({required String name, required String role, required String keyword}) async {
+    final portal = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Buscar "$keyword" en…', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            ...portals.map((p) => ListTile(
+              leading: const Icon(Icons.public),
+              title: Text(p),
+              onTap: () => Navigator.pop(context, p),
+            )),
+          ],
+        ),
+      ),
+    );
+    if (portal == null) return;
+    _open(name: name, role: role, portal: portal, url: searchUrl(portal, keyword));
+  }
+
   Future<void> _customSearch() async {
     final keyword = await askText(context, title: 'Nueva búsqueda', hint: 'Ej.: ayudante de cocina');
     if (keyword == null) return;
-    _open(name: keyword, role: keyword, url: infojobsSearchUrl(keyword, _profile!.province));
+    _openIn(name: keyword, role: keyword, keyword: keyword);
   }
 
   Future<void> _delete(SavedSearch search) async {
@@ -107,10 +131,10 @@ class _HomePageState extends State<HomePage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _uploading
-              ? const _Loading()
-              : profile == null
-                  ? _Start(onPick: _uploadCv)
-                  : _home(profile),
+          ? const _Loading()
+          : profile == null
+          ? _Start(onPick: _uploadCv)
+          : _home(profile),
     );
   }
 
@@ -149,29 +173,29 @@ class _HomePageState extends State<HomePage> {
         if (_searches.isNotEmpty) ...[
           _Header('Tus búsquedas'),
           ..._searches.map((s) => Card(
-                child: ListTile(
-                  leading: const Icon(Icons.bookmark),
-                  title: Text(s.name),
-                  subtitle: Text(s.portal),
-                  trailing: IconButton(
-                    tooltip: 'Borrar',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _delete(s),
-                  ),
-                  onTap: () => _open(name: s.name, role: s.role, url: s.url),
-                ),
-              )),
+            child: ListTile(
+              leading: const Icon(Icons.bookmark),
+              title: Text(s.name),
+              subtitle: Text(s.portal),
+              trailing: IconButton(
+                tooltip: 'Borrar',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => _delete(s),
+              ),
+              onTap: () => _open(name: s.name, role: s.role, portal: s.portal, url: s.url),
+            ),
+          )),
         ],
         _Header('Sugeridas por tu CV'),
         ...suggestions.map((s) => Card(
-              child: ListTile(
-                leading: const Icon(Icons.auto_awesome),
-                title: Text(s.name),
-                subtitle: Text('Buscar "${s.keyword}" en InfoJobs'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _open(name: s.name, role: s.role, url: infojobsSearchUrl(s.keyword, p.province)),
-              ),
-            )),
+          child: ListTile(
+            leading: const Icon(Icons.auto_awesome),
+            title: Text(s.name),
+            subtitle: Text('Buscar "${s.keyword}"'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _openIn(name: s.name, role: s.role, keyword: s.keyword),
+          ),
+        )),
         Card(
           child: ListTile(
             leading: const Icon(Icons.search),
@@ -182,8 +206,8 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Abre una búsqueda, ajusta los filtros en InfoJobs y pulsa el marcador para guardarla. '
-          'Con "Analizar página" la IA puntúa las ofertas que estás viendo.',
+          'Abre una búsqueda, ajusta los filtros en el portal y pulsa el marcador para guardarla. '
+              'Con "Analizar página" la IA puntúa las ofertas que estás viendo.',
           style: text.bodySmall,
         ),
       ],
@@ -227,8 +251,8 @@ class _Start extends StatelessWidget {
               Text('Encuentra ofertas que encajan contigo', style: text.headlineSmall, textAlign: TextAlign.center),
               const SizedBox(height: 8),
               Text(
-                'Sube tu CV en PDF. La IA te propone búsquedas y, mientras navegas por InfoJobs, '
-                'te dice cuánto encajas en cada oferta y qué te falta.',
+                'Sube tu CV en PDF. La IA te propone búsquedas y, mientras navegas por InfoJobs o LinkedIn, '
+                    'te dice cuánto encajas en cada oferta y qué te falta.',
                 style: text.bodyMedium,
                 textAlign: TextAlign.center,
               ),
